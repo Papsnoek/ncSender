@@ -359,11 +359,34 @@ public partial class CncController : ICncController
 
                     LogCommandSent(entry.RawCommand, isRealTime: false);
 
-                    // Wait for the TCS to be completed by HandleCommandOk/HandleCommandError.
-                    // No timeout — commands like M0 (program pause) hold until the user
-                    // sends ~ (cycle start), which is a real-time command that bypasses
-                    // the queue. Disconnection cancels via ct.
-                    await entry.Tcs.Task.WaitAsync(ct);
+                    // Per-command timeout (see CommandTimeoutPolicy) only applies to
+                    // direct user-driven sources where a stuck queue feels like a
+                    // frozen UI: terminal/panel input (client), jog buttons,
+                    // pendant. Everything else (job/macro streaming, internal
+                    // system/event/probe/controller-files calls) waits as long as
+                    // the controller takes — the planner buffer paces things
+                    // naturally and a slow motion can legitimately delay "ok".
+                    var sourceId = entry.Meta?.SourceId;
+                    var isManual = sourceId is "client" or "jog" or "usb-pendant";
+                    var timeout = isManual ? CommandTimeoutPolicy.GetTimeout(entry.RawCommand) : null;
+                    try
+                    {
+                        if (timeout is { } t)
+                            await entry.Tcs.Task.WaitAsync(t, ct);
+                        else
+                            await entry.Tcs.Task.WaitAsync(ct);
+                    }
+                    catch (TimeoutException)
+                    {
+                        var msg = $"No 'ok' from controller within {timeout!.Value.TotalSeconds:0.##}s for: {entry.RawCommand}";
+                        _logger.LogWarning(msg);
+                        var err = new TimeoutException(msg);
+                        entry.Tcs.TrySetException(err);
+                        EmitCommandAck(entry, "error", msg);
+                        // Continue draining the queue — don't soft-reset. If the
+                        // controller is genuinely hung, subsequent commands will
+                        // also time out and the user can hit Stop manually.
+                    }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
