@@ -128,7 +128,8 @@ public class PendantManager : IPendantManager
             PendantEnabled = usbConnected,
             ActiveConnectionType = activeType,
             PendantConnectionType = pendantConnectionType,
-            OtaReady = otaReady
+            OtaReady = otaReady,
+            DongleConnected = _dongleHandler is { IsConnected: true }
         };
     }
 
