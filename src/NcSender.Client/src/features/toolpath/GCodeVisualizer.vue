@@ -1703,12 +1703,26 @@ const onMouseMove = (event: MouseEvent) => {
     const combinedRotation = new THREE.Quaternion();
     combinedRotation.multiplyQuaternions(horizontalRotation, verticalRotation);
 
-    // Apply rotation to camera position around the target
     const offset = activeCamera.position.clone().sub(activeTarget);
     offset.applyQuaternion(combinedRotation);
-    activeCamera.position.copy(activeTarget).add(offset);
 
-    activeCamera.up.set(0, 0, 1); // Maintain Z-up orientation
+    const radius = offset.length();
+    if (radius > 1e-6) {
+      const polarEpsilon = 0.05;
+      const phi = Math.acos(Math.max(-1, Math.min(1, offset.z / radius)));
+      const clampedPhi = Math.max(polarEpsilon, Math.min(Math.PI - polarEpsilon, phi));
+      if (clampedPhi !== phi) {
+        const theta = Math.atan2(offset.y, offset.x);
+        offset.set(
+          radius * Math.sin(clampedPhi) * Math.cos(theta),
+          radius * Math.sin(clampedPhi) * Math.sin(theta),
+          radius * Math.cos(clampedPhi),
+        );
+      }
+    }
+
+    activeCamera.position.copy(activeTarget).add(offset);
+    activeCamera.up.set(0, 0, 1);
     activeCamera.lookAt(activeTarget);
   } else if (isPanning) {
     // Pan camera by moving both position and target
