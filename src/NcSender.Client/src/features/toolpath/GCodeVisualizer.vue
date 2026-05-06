@@ -1671,54 +1671,26 @@ const onMouseMove = (event: MouseEvent) => {
   if (!activeCamera) return;
 
   if (isRotating) {
-    // Onshape-style trackball rotation
-    // Rotate around screen axes, not spherical coordinates
     const rotationSpeed = 0.005;
 
-    // Get camera's right vector (in world space)
-    const right = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 0, 1); // Always use world Z-up for vertical rotation
-
-    right.setFromMatrixColumn(activeCamera.matrix, 0); // Camera's right vector
-    right.z = 0; // Project onto XY plane to keep rotation around Z-axis
-
-    // Handle degenerate case when camera is looking straight up/down
-    if (right.lengthSq() < 0.001) {
-      // Use camera's up vector projected to XY as fallback
-      right.setFromMatrixColumn(activeCamera.matrix, 1);
-      right.z = 0;
-      right.applyAxisAngle(up, Math.PI / 2); // Rotate 90° to get right vector
-    }
-    right.normalize();
-
-    // Create rotation around the up axis (Z) for horizontal mouse movement
-    const horizontalRotation = new THREE.Quaternion();
-    horizontalRotation.setFromAxisAngle(up, -deltaX * rotationSpeed);
-
-    // Create rotation around the right axis for vertical mouse movement
-    const verticalRotation = new THREE.Quaternion();
-    verticalRotation.setFromAxisAngle(right, -deltaY * rotationSpeed);
-
-    // Combine rotations
-    const combinedRotation = new THREE.Quaternion();
-    combinedRotation.multiplyQuaternions(horizontalRotation, verticalRotation);
-
     const offset = activeCamera.position.clone().sub(activeTarget);
-    offset.applyQuaternion(combinedRotation);
-
     const radius = offset.length();
+
     if (radius > 1e-6) {
+      let theta = Math.atan2(offset.y, offset.x);
+      let phi = Math.acos(Math.max(-1, Math.min(1, offset.z / radius)));
+
+      theta -= deltaX * rotationSpeed;
+      phi += deltaY * rotationSpeed;
+
       const polarEpsilon = 0.05;
-      const phi = Math.acos(Math.max(-1, Math.min(1, offset.z / radius)));
-      const clampedPhi = Math.max(polarEpsilon, Math.min(Math.PI - polarEpsilon, phi));
-      if (clampedPhi !== phi) {
-        const theta = Math.atan2(offset.y, offset.x);
-        offset.set(
-          radius * Math.sin(clampedPhi) * Math.cos(theta),
-          radius * Math.sin(clampedPhi) * Math.sin(theta),
-          radius * Math.cos(clampedPhi),
-        );
-      }
+      phi = Math.max(polarEpsilon, Math.min(Math.PI - polarEpsilon, phi));
+
+      offset.set(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.sin(phi) * Math.sin(theta),
+        radius * Math.cos(phi),
+      );
     }
 
     activeCamera.position.copy(activeTarget).add(offset);
