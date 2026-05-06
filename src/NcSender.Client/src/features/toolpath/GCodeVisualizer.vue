@@ -1275,8 +1275,8 @@ const initThreeJS = () => {
   );
   // Position camera to match the initial view prop (avoids orientation flash)
   if (props.view === 'top') {
-    camera.position.set(0, 0, 100);
-    camera.up.set(0, 1, 0);
+    camera.position.set(0, -100 * Math.sin(0.05), 100 * Math.cos(0.05));
+    camera.up.set(0, 0, 1);
   } else if (props.view === 'front') {
     camera.position.set(0, -100, 0);
     camera.up.set(0, 0, 1);
@@ -2959,8 +2959,12 @@ const fitCameraToBounds = (bounds: any, viewType?: 'top' | 'front' | 'iso' | 'sp
 
   switch (currentView) {
     case 'top':
-      camera.position.set(bounds.center.x, bounds.center.y, bounds.center.z + distance);
-      camera.up.set(0, 1, 0);
+      camera.position.set(
+        bounds.center.x,
+        bounds.center.y - distance * Math.sin(0.05),
+        bounds.center.z + distance * Math.cos(0.05),
+      );
+      camera.up.set(0, 0, 1);
       break;
     case 'front':
       camera.position.set(bounds.center.x, bounds.center.y - distance, bounds.center.z);
@@ -3169,8 +3173,12 @@ const setCameraView = (viewType: 'top' | 'front' | 'iso' | 'split') => {
     case 'top':
       // Top view - looking down along Z axis with proper CNC orientation
       // Y points up on screen, X points right on screen
-      camera.position.set(center.x, center.y, center.z + distance);
-      camera.up.set(0, 1, 0); // Y axis points up in top view
+      camera.position.set(
+        center.x,
+        center.y - distance * Math.sin(0.05),
+        center.z + distance * Math.cos(0.05),
+      );
+      camera.up.set(0, 0, 1);
       break;
     case 'front':
       // Front view - looking along Y axis with Z up
