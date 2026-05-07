@@ -847,6 +847,23 @@ public partial class CncController : ICncController
             var sourceId = GetActiveSourceId();
             DataReceived?.Invoke(trimmedData, sourceId);
         }
+        // G92 offset (current G92 modal offset) — needed for FluidNC WCO synthesis
+        else if (trimmedData.StartsWith("[G92:", StringComparison.Ordinal) && trimmedData[^1] == ']')
+        {
+            _lastStatus.G92Offset = trimmedData[5..^1];
+            LogControllerData(trimmedData);
+            var sourceId = GetActiveSourceId();
+            DataReceived?.Invoke(trimmedData, sourceId);
+        }
+        // Tool Length Offset (Z-only) — needed for FluidNC WCO synthesis
+        else if (trimmedData.StartsWith("[TLO:", StringComparison.Ordinal) && trimmedData[^1] == ']')
+        {
+            if (double.TryParse(trimmedData[5..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var tlo))
+                _lastStatus.Tlo = tlo;
+            LogControllerData(trimmedData);
+            var sourceId = GetActiveSourceId();
+            DataReceived?.Invoke(trimmedData, sourceId);
+        }
         // Error response
         else if (trimmedData.StartsWith("error:", StringComparison.OrdinalIgnoreCase))
         {
@@ -1197,6 +1214,11 @@ public partial class CncController : ICncController
             _lastStatus.Pn = _activeProtocol.NormalizePinState(_lastStatus.Pn, _lastStatus.ActiveProbe, tlsIdx, _lastStatus.ProbeCount);
         }
 
+        // Protocol-specific post-processing (e.g. homing detection, WCO synthesis
+        // for FluidNC). Must run before wPos computation so the synthesized WCO
+        // is available — FluidNC status reports omit WCO entirely.
+        _activeProtocol?.PostProcessStatus(_lastStatus, prevStatus ?? "");
+
         // Compute wPos from MPos - WCO (GRBL typically only sends MPos + WCO)
         // V1 client computes work coords client-side, but we store WPos for internal use
         if (!string.IsNullOrEmpty(_lastStatus.MPos) && !string.IsNullOrEmpty(_lastStatus.WCO))
@@ -1214,9 +1236,6 @@ public partial class CncController : ICncController
             }
             _lastStatus.WPos = string.Join(",", wParts);
         }
-
-        // Protocol-specific post-processing (e.g. homing detection)
-        _activeProtocol?.PostProcessStatus(_lastStatus, prevStatus ?? "");
 
         // Preserve accessory states if A: field not present
         if (!hasAccessoryField)

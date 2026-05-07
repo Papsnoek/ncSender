@@ -87,6 +87,16 @@ public class MachineState
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? G59 { get; set; }
 
+    // G92 offset and Tool Length Offset from $# response. Server-internal —
+    // FluidNC's status reports omit WCO, so we synthesize WCO from the active
+    // workspace's offset plus these. grblHAL fills WCO from its status report
+    // directly and these stay null.
+    [JsonIgnore]
+    public string? G92Offset { get; set; }
+
+    [JsonIgnore]
+    public double Tlo { get; set; }
+
     public int OutputPins { get; set; }
     public List<int> OutputPinsState { get; set; } = [];
 
