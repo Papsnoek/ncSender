@@ -76,6 +76,22 @@ public class PendantPortScanner : IDisposable
         _scanTimer?.Dispose();
         _scanTimer = null;
 
+        // Mark stopped before grabbing the lock so any scan that's queued
+        // up but not yet running bails out instead of opening fresh ports.
+        _disposed = true;
+
+        // Wait for any in-flight scan to finish before clearing state.
+        // Without this, a scan that's mid-ConnectAsync (e.g. user changes
+        // transport just as we open a new candidate port) completes after
+        // Stop() returns and leaves an orphan SerialPort holding the OS
+        // handle — the controller can't reopen the port and the user has
+        // to restart the app. The scan's OpenAndProbeAsync owns its
+        // handler's lifecycle, so by the time it releases the lock the
+        // handler is either tracked, pending, or already disposed.
+        var lockHeld = false;
+        try { lockHeld = _scanLock.Wait(TimeSpan.FromSeconds(3)); }
+        catch { /* best effort */ }
+
         // Release all open ports so the OS frees the handles. Otherwise a
         // subsequent transport switch (e.g. user moves CNC from ethernet to
         // USB) finds the controller's USB port still held by us and the
@@ -91,6 +107,11 @@ public class PendantPortScanner : IDisposable
         foreach (var pp in _pending.Values)
             handlersToDispose.Add(pp.Handler);
         _pending.Clear();
+
+        if (lockHeld)
+        {
+            try { _scanLock.Release(); } catch { /* best effort */ }
+        }
 
         foreach (var handler in handlersToDispose)
         {
@@ -109,9 +130,12 @@ public class PendantPortScanner : IDisposable
 
     private async Task ScanAsync()
     {
+        if (_disposed) return;
         if (!await _scanLock.WaitAsync(0)) return;
         try
         {
+            if (_disposed) return;
+
             var cncPort = _getCncPort();
             var currentPorts = GetCandidatePorts(cncPort);
 
