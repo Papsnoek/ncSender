@@ -78,7 +78,7 @@ public class PendantSerialHandler : IAsyncDisposable
             _readTask = ReadLoopAsync(_readCts.Token);
         }
 
-        _logger.LogInformation("Pendant serial connected on {Port}", port);
+        _logger.LogInformation("Serial port opened: {Port}", port);
     }
 
     public async Task DisconnectAsync()
