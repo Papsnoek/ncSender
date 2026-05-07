@@ -1681,7 +1681,7 @@ const onMouseMove = (event: MouseEvent) => {
       let phi = Math.acos(Math.max(-1, Math.min(1, offset.z / radius)));
 
       theta -= deltaX * rotationSpeed;
-      phi += deltaY * rotationSpeed;
+      phi -= deltaY * rotationSpeed;
 
       const polarEpsilon = 0.05;
       phi = Math.max(polarEpsilon, Math.min(Math.PI - polarEpsilon, phi));
