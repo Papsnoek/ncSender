@@ -75,6 +75,29 @@ public class PendantPortScanner : IDisposable
     {
         _scanTimer?.Dispose();
         _scanTimer = null;
+
+        // Release all open ports so the OS frees the handles. Otherwise a
+        // subsequent transport switch (e.g. user moves CNC from ethernet to
+        // USB) finds the controller's USB port still held by us and the
+        // controller's ConnectAsync hangs. Closing is safe because we open
+        // with both DTR and RTS high — close doesn't pulse a reset on the
+        // ESP32 auto-reset network.
+        List<PendantSerialHandler> handlersToDispose;
+        lock (_tracked)
+        {
+            handlersToDispose = _tracked.Values.Select(d => d.Handler).ToList();
+            _tracked.Clear();
+        }
+        foreach (var pp in _pending.Values)
+            handlersToDispose.Add(pp.Handler);
+        _pending.Clear();
+
+        foreach (var handler in handlersToDispose)
+        {
+            try { handler.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(1)); }
+            catch { /* best effort */ }
+        }
+
         _logger.LogInformation("Port scanner stopped");
     }
 
@@ -247,6 +270,20 @@ public class PendantPortScanner : IDisposable
             // Give USB CDC time to stabilize (device may need to finish boot)
             await Task.Delay(100);
 
+            // Step 1: GRBL/FluidNC always responds to '?' with a status report.
+            // Pendants don't. This is the most reliable way to tell them apart
+            // — the FluidNC and pendant can be the same hardware (ESP32-S3),
+            // so VID/PID won't differentiate. Avoids sending $ID to the
+            // controller, which has been linked to FluidNC v4.0.3 crashes
+            // when both transports talk to it at once.
+            if (await IsCncControllerAsync(handler, port))
+            {
+                _cncBlacklist.Add(port);
+                try { await handler.DisposeAsync(); } catch { /* best effort */ }
+                return null;
+            }
+
+            // Step 2: not a CNC, try identifying as pendant/dongle.
             var result = await SendIdAndWaitAsync(handler, port);
 
             if (result.IsCnc)
@@ -268,6 +305,44 @@ public class PendantPortScanner : IDisposable
             // Don't try to close on failure — if Open() succeeded, dropping reference
             // is safer than Close() which could trigger CDC reset
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Sends '?' and watches for a GRBL-style status report '&lt;...&gt;'.
+    /// Returns true when this port is talking to a CNC controller.
+    /// </summary>
+    private async Task<bool> IsCncControllerAsync(PendantSerialHandler handler, string port)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnRaw(string line)
+        {
+            var trimmed = line.TrimStart();
+            // Status report (the canonical GRBL/FluidNC '?' response)
+            if (trimmed.StartsWith("<", StringComparison.Ordinal) && trimmed.Contains(">", StringComparison.Ordinal))
+                tcs.TrySetResult(true);
+            // Other CNC banners that might land in the same window (boot
+            // banner from a DTR-triggered reset, error reply, etc.)
+            else if (LooksLikeCncController(line))
+                tcs.TrySetResult(true);
+        }
+
+        handler.RawMessageReceived += OnRaw;
+        try
+        {
+            await handler.SendRawAsync("?");
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(200));
+            if (completed == tcs.Task && tcs.Task.Result)
+            {
+                _logger.LogInformation("Port {Port} responded to '?' as a CNC controller, skipping pendant probe", port);
+                return true;
+            }
+            return false;
+        }
+        finally
+        {
+            handler.RawMessageReceived -= OnRaw;
         }
     }
 
