@@ -26,6 +26,7 @@ public class PendantPortScanner : IDisposable
     private Timer? _scanTimer;
     private readonly Dictionary<string, TrackedDevice> _tracked = new();
     private readonly Dictionary<string, PendingPort> _pending = new();  // Open but not yet identified
+    private readonly HashSet<string> _cncBlacklist = new(StringComparer.OrdinalIgnoreCase); // Ports that responded as a CNC controller
     private readonly SemaphoreSlim _scanLock = new(1, 1);
     private bool _disposed;
 
@@ -90,6 +91,10 @@ public class PendantPortScanner : IDisposable
         {
             var cncPort = _getCncPort();
             var currentPorts = GetCandidatePorts(cncPort);
+
+            // Drop blacklist entries for ports that physically disappeared so
+            // a real pendant plugged into the same port later can be probed.
+            _cncBlacklist.RemoveWhere(p => !currentPorts.Contains(p));
 
             // 1. Clean up disappeared tracked devices
             List<KeyValuePair<string, TrackedDevice>> lost;
@@ -182,7 +187,9 @@ public class PendantPortScanner : IDisposable
             var pendingPorts = new HashSet<string>(_pending.Keys);
 
             var newPorts = currentPorts
-                .Where(p => !knownPorts.Contains(p) && !pendingPorts.Contains(p))
+                .Where(p => !knownPorts.Contains(p)
+                         && !pendingPorts.Contains(p)
+                         && !_cncBlacklist.Contains(p))
                 .ToList();
 
             foreach (var port in newPorts)
@@ -241,8 +248,16 @@ public class PendantPortScanner : IDisposable
             await Task.Delay(100);
 
             var result = await SendIdAndWaitAsync(handler, port);
-            if (result is not null)
-                return new TrackedDevice(port, result.Value, handler);
+
+            if (result.IsCnc)
+            {
+                _cncBlacklist.Add(port);
+                try { await handler.DisposeAsync(); } catch { /* best effort */ }
+                return null;
+            }
+
+            if (result.Device is { } deviceType)
+                return new TrackedDevice(port, deviceType, handler);
 
             // No response yet — keep open as pending
             return new PendingPort(port, handler);
@@ -265,24 +280,45 @@ public class PendantPortScanner : IDisposable
         if (!pending.Handler.IsConnected) return null;
 
         var result = await SendIdAndWaitAsync(pending.Handler, pending.Port);
-        if (result is null) return null;
 
-        return new TrackedDevice(pending.Port, result.Value, pending.Handler);
+        if (result.IsCnc)
+        {
+            _cncBlacklist.Add(pending.Port);
+            try { await pending.Handler.DisposeAsync(); } catch { /* best effort */ }
+            _pending.Remove(pending.Port);
+            return null;
+        }
+
+        if (result.Device is { } deviceType)
+            return new TrackedDevice(pending.Port, deviceType, pending.Handler);
+
+        return null;
     }
 
     /// <summary>
     /// Sends $ID and waits for response on a live handler. Does NOT open or close the port.
     /// </summary>
-    private async Task<DeviceType?> SendIdAndWaitAsync(PendantSerialHandler handler, string port)
+    private record IdResult(DeviceType? Device, bool IsCnc);
+
+    private async Task<IdResult> SendIdAndWaitAsync(PendantSerialHandler handler, string port)
     {
-        var tcs = new TaskCompletionSource<DeviceType>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<IdResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         void OnRaw(string line)
         {
             if (line == "$ID:pendant")
-                tcs.TrySetResult(DeviceType.Pendant);
+                tcs.TrySetResult(new IdResult(DeviceType.Pendant, false));
             else if (line == "$ID:dongle")
-                tcs.TrySetResult(DeviceType.Dongle);
+                tcs.TrySetResult(new IdResult(DeviceType.Dongle, false));
+            // The port might already be carrying a CNC controller (e.g. user
+            // is on ethernet but USB is also plugged in). Repeated $ID probes
+            // crash FluidNC v4.0.3 over wireless. Detect the GRBL/FluidNC
+            // signature, blacklist the port, and stop hammering it.
+            else if (LooksLikeCncController(line))
+            {
+                _logger.LogInformation("Port {Port} appears to be a CNC controller, skipping pendant probe", port);
+                tcs.TrySetResult(new IdResult(null, true));
+            }
         }
 
         handler.RawMessageReceived += OnRaw;
@@ -294,12 +330,22 @@ public class PendantPortScanner : IDisposable
             if (completed == tcs.Task)
                 return tcs.Task.Result;
 
-            return null;
+            return new IdResult(null, false);
         }
         finally
         {
             handler.RawMessageReceived -= OnRaw;
         }
+    }
+
+    private static bool LooksLikeCncController(string line)
+    {
+        var trimmed = line.TrimStart();
+        return trimmed.StartsWith("Grbl ", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("[MSG:INFO: FluidNC", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("[VER:", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("[OPT:", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("error:", StringComparison.OrdinalIgnoreCase);
     }
 
     private HashSet<string> GetCandidatePorts(string? excludePort)
