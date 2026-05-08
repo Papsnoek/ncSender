@@ -6,83 +6,135 @@ public static class ThreeDProbeStrategy
 {
     private const double ZParkHeight = 4;
 
-    public static List<string> GetZProbeRoutine(double zOffset = 0)
+    public static List<string> GetZProbeRoutine(double zOffset = 0, bool fastProbe = false)
     {
-        return
-        [
+        var code = new List<string>
+        {
             "(Probe Z)",
             "#<return_units> = [20 + #<_metric>]",
-            "G21 G91",
-            "G38.2 Z-25 F200",
-            "G0 Z4",
-            "G38.2 Z-5 F75",
-            "G4 P0.3",
-            $"G10 L20 Z{F(zOffset)}",
-            $"G0 Z{F(ZParkHeight)}",
-            "G90",
-            "G[#<return_units>]"
-        ];
+            "G21 G91"
+        };
+
+        if (fastProbe)
+        {
+            code.Add("G38.2 Z-25 F500");
+            code.Add("G4 P0.2");
+            code.Add("G38.4 Z5 F75");
+
+        };
+
+        if (!fastProbe)
+        {
+
+            code.Add("G38.2 Z-25 F200");
+            code.Add("G0 Z4");
+            code.Add("G38.2 Z-5 F75");
+            
+        };
+
+        code.Add("G4 P0.3");
+        code.Add($"G10 L20 Z{F(zOffset)}");
+        code.Add($"G0 Z{F(ZParkHeight)}");
+        code.Add("G90");
+        code.Add("G[#<return_units>]");
+
+        return code;
     }
 
-    public static List<string> GetXProbeRoutine(string selectedSide, double toolDiameter = 6)
+    public static List<string> GetXProbeRoutine(
+        string selectedSide, double toolDiameter = 6, 
+        bool fastProbe = false)
     {
         var toolRadius = toolDiameter / 2;
         var isLeft = selectedSide == "Left";
 
-        var fastProbe = isLeft ? 30 : -30;
+        var fastSpeed = isLeft ? 30 : -30;
         var bounce = isLeft ? -4 : 4;
-        var slowProbe = isLeft ? 5 : -5;
+        var slowSpeed = isLeft ? 5 : -5;
         var offset = isLeft ? -toolRadius : toolRadius;
         var moveAway = isLeft ? -4 : 4;
 
-        return
-        [
+        var code = new List<string>
+        {
             $"(Probe X - {selectedSide})",
             "#<return_units> = [20 + #<_metric>]",
             "G10 L20 X0",
-            "G91 G21",
-            $"G38.2 X{F(fastProbe)} F150",
-            $"G91 G0 X{F(bounce)}",
-            $"G38.2 X{F(slowProbe)} F75",
-            "G4 P0.3",
-            $"G10 L20 X{F(offset)}",
-            $"G0 X{F(moveAway)}",
-            "G90",
-            "G[#<return_units>]"
-        ];
+            "G91 G21"
+        };
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X{F(fastSpeed)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X{F(bounce)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 X{F(fastSpeed)} F150");
+            code.Add($"G91 G0 X{F(bounce)}");
+            code.Add($"G38.2 X{F(slowSpeed)} F75");
+        }
+
+        code.Add("G4 P0.3");
+        code.Add($"G10 L20 X{F(offset)}");
+        code.Add($"G0 X{F(moveAway)}");
+        code.Add("G90");
+        code.Add("G[#<return_units>]");
+
+        return code;
+    
     }
 
-    public static List<string> GetYProbeRoutine(string selectedSide, double toolDiameter = 6)
+    public static List<string> GetYProbeRoutine(
+        string selectedSide, double toolDiameter = 6, 
+        bool fastProbe = false)
     {
         var toolRadius = toolDiameter / 2;
         var isFront = selectedSide == "Front";
 
-        var fastProbe = isFront ? 30 : -30;
+        var fastSpeed = isFront ? 30 : -30;
         var bounce = isFront ? -4 : 4;
-        var slowProbe = isFront ? 5 : -5;
+        var slowSpeed = isFront ? 5 : -5;
         var offset = isFront ? -toolRadius : toolRadius;
         var moveAway = isFront ? -4 : 4;
 
-        return
-        [
+        var code = new List<string>
+        {
             $"(Probe Y - {selectedSide})",
             "#<return_units> = [20 + #<_metric>]",
             "G10 L20 Y0",
             "G91 G21",
-            $"G38.2 Y{F(fastProbe)} F150",
-            $"G91 G0 Y{F(bounce)}",
-            $"G38.2 Y{F(slowProbe)} F75",
-            "G4 P0.3",
-            $"G10 L20 Y{F(offset)}",
-            $"G0 Y{F(moveAway)}",
-            "G90",
-            "G[#<return_units>]"
-        ];
+        };
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y{F(fastSpeed)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y{F(bounce)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 Y{F(fastSpeed)} F150");
+            code.Add($"G91 G0 Y{F(bounce)}");
+            code.Add($"G38.2 Y{F(slowSpeed)} F75");
+        }
+        
+        code.Add("G4 P0.3");
+        code.Add($"G10 L20 Y{F(offset)}");
+        code.Add($"G0 Y{F(moveAway)}");
+        code.Add("G90");
+        code.Add("G[#<return_units>]");
+
+        return code;
+        
     }
 
     public static List<string> GetXYProbeRoutine(
         string selectedCorner, double toolDiameter = 6,
-        bool skipPrepMove = false, double zPlunge = 3)
+        bool skipPrepMove = false, double zPlunge = 3,
+        bool fastProbe = false)
     {
         var toolRadius = toolDiameter / 2;
 
@@ -116,9 +168,20 @@ public static class ThreeDProbeStrategy
             code.Add($"G0 Y{F(yMove)}");
         }
 
-        code.Add($"G38.2 X{F(xProbe)} F150");
-        code.Add($"G0 X{F(xRetract)}");
-        code.Add($"G38.2 X{F(xSlow)} F75");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X{F(xProbe)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X{F(xRetract)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 X{F(xProbe)} F150");
+            code.Add($"G0 X{F(xRetract)}");
+            code.Add($"G38.2 X{F(xSlow)} F75");
+        }
+
         code.Add("G4 P0.3");
         code.Add($"G10 L20 X{F(xOffset)}");
 
@@ -126,9 +189,20 @@ public static class ThreeDProbeStrategy
         code.Add($"G0 Y{F(-yMove + yRetract)}");
         code.Add($"G0 X{F(xMove)}");
 
-        code.Add($"G38.2 Y{F(yProbe)} F150");
-        code.Add($"G91 G0 Y{F(yRetract)}");
-        code.Add($"G38.2 Y{F(ySlow)} F75");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y{F(yProbe)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y{F(yRetract)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 Y{F(yProbe)} F150");
+            code.Add($"G91 G0 Y{F(yRetract)}");
+            code.Add($"G38.2 Y{F(ySlow)} F75");
+        }
+        
         code.Add("G4 P0.3");
         code.Add($"G10 L20 Y{F(yOffset)}");
         code.Add($"G0 Y{F(yRetract)}");
@@ -143,26 +217,28 @@ public static class ThreeDProbeStrategy
 
     public static List<string> GetXYZProbeRoutine(
         string selectedCorner, double toolDiameter = 6,
-        double zPlunge = 3, double zOffset = 0)
+        double zPlunge = 3, double zOffset = 0,
+        bool fastProbe = false)
     {
         var isLeft = selectedCorner is "TopLeft" or "BottomLeft";
         var xMove = isLeft ? -(toolDiameter + 16) : (toolDiameter + 16);
 
         var code = new List<string>();
-        code.AddRange(GetZProbeRoutine(zOffset));
+        code.AddRange(GetZProbeRoutine(zOffset, fastProbe));
 
         code.Add("G91");
         code.Add($"G0 X{F(xMove)}");
         code.Add($"G38.3 Z-{F(zPlunge + ZParkHeight)} F150");
 
-        code.AddRange(GetXYProbeRoutine(selectedCorner, toolDiameter, skipPrepMove: true, zPlunge));
+        code.AddRange(GetXYProbeRoutine(selectedCorner, toolDiameter, skipPrepMove: true, zPlunge, fastProbe));
 
         return code;
     }
 
     public static List<string> GetCenterInnerRoutine(
         double xDimension, double yDimension, double toolDiameter = 2,
-        double rapidMovement = 2000, double zPlunge = 3)
+        double rapidMovement = 2000, double zPlunge = 3,
+        bool fastProbe = false)
     {
         var halfX = xDimension / 2;
         var halfY = yDimension / 2;
@@ -190,36 +266,79 @@ public static class ThreeDProbeStrategy
         if (safeRapidX > 0)
             code.Add($"G38.3 X-{F(safeRapidX)} F#<RAPID_SEARCH>");
 
-        code.Add($"G38.2 X-{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 X{bounce}");
-        code.Add($"G38.2 X-3 F{slowFeed}");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X-{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X{F(bounce)} F75");
+        }
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 X-{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 X{bounce}");
+            code.Add($"G38.2 X-3 F{slowFeed}");
+        }
+
         code.Add("#<X1> = #5061");
         code.Add($"G0 X{F(halfX)}");
 
         if (safeRapidX > 0)
             code.Add($"G38.3 X{F(safeRapidX - toolDiameter / 2)} F#<RAPID_SEARCH>");
 
-        code.Add($"G38.2 X{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 X-{bounce}");
-        code.Add($"G38.2 X3 F{slowFeed}");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X-{F(bounce)} F75");
+        }
+        
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 X{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 X-{bounce}");
+            code.Add($"G38.2 X3 F{slowFeed}");
+        }
+
         code.Add("#<X2> = #5061");
         code.Add("G0 X-[[#<X2>-#<X1>]/2]");
 
         if (safeRapidY > 0)
             code.Add($"G38.3 Y-{F(safeRapidY)} F#<RAPID_SEARCH>");
 
-        code.Add($"G38.2 Y-{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 Y{bounce}");
-        code.Add($"G38.2 Y-3 F{slowFeed}");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y-{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y{F(bounce)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 Y-{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 Y{bounce}");
+            code.Add($"G38.2 Y-3 F{slowFeed}");
+        }
+
         code.Add("#<Y1> = #5062");
         code.Add($"G0 Y{F(halfY)}");
 
         if (safeRapidY > 0)
             code.Add($"G38.3 Y{F(safeRapidY - toolDiameter / 2)} F#<RAPID_SEARCH>");
 
-        code.Add($"G38.2 Y{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 Y-{bounce}");
-        code.Add($"G38.2 Y3 F{slowFeed}");
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y-{F(bounce)} F75");
+        }
+
+        if (!fastProbe)
+        {
+            code.Add($"G38.2 Y{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 Y-{bounce}");
+            code.Add($"G38.2 Y3 F{slowFeed}");
+        }
+
         code.Add("#<Y2> = #5062");
         code.Add("G0 Y-[[#<Y2>-#<Y1>]/2]");
         code.Add("G10 L20 X0 Y0");
@@ -233,7 +352,8 @@ public static class ThreeDProbeStrategy
     public static List<string> GetCenterOuterRoutine(
         double xDimension, double yDimension, double toolDiameter = 2,
         double rapidMovement = 2000, bool probeZFirst = false,
-        double zPlunge = 3, double zOffset = 0)
+        double zPlunge = 3, double zOffset = 0, 
+        bool fastProbe = false)
     {
         var halfX = xDimension / 2;
         var halfY = yDimension / 2;
@@ -250,7 +370,7 @@ public static class ThreeDProbeStrategy
         var code = new List<string>();
 
         if (probeZFirst)
-            code.AddRange(GetZProbeRoutine(zOffset));
+            code.AddRange(GetZProbeRoutine(zOffset, fastProbe));
 
         code.Add("(Probing Center - Outer)");
         code.Add("#<return_units> = [20 + #<_metric>]");
@@ -264,9 +384,21 @@ public static class ThreeDProbeStrategy
             code.Add($"G38.3 X-{F(safeRapidX)} F#<RAPID_SEARCH>");
 
         code.Add($"G38.3 Z-{F(zHop)} F200");
-        code.Add($"G38.2 X{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 X-{bounce}");
-        code.Add($"G38.2 X{F(bounce + 1)} F{slowFeed}");
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X-{F(bounce)} F75");
+        }
+
+        if(!fastProbe)
+        {
+            code.Add($"G38.2 X{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 X-{bounce}");
+            code.Add($"G38.2 X{F(bounce + 1)} F{slowFeed}");
+        }
+
         code.Add("#<X1> = #5061");
         code.Add($"G0 X-{bounce}");
         code.Add($"G0 Z{F(zHop)}");
@@ -277,9 +409,21 @@ public static class ThreeDProbeStrategy
             code.Add($"G38.3 X{F(safeRapidX)} F#<RAPID_SEARCH>");
 
         code.Add($"G38.3 Z-{F(zHop)} F200");
-        code.Add($"G38.2 X-{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 X{bounce}");
-        code.Add($"G38.2 X-{F(bounce + 1)} F{slowFeed}");
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 X-{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 X{F(bounce)} F75");
+        }
+
+        if(!fastProbe)
+        {
+            code.Add($"G38.2 X-{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 X{bounce}");
+            code.Add($"G38.2 X-{F(bounce + 1)} F{slowFeed}");
+        }
+
         code.Add("#<X2> = #5061");
         code.Add($"G0 X{bounce}");
         code.Add($"G0 Z{F(zHop)}");
@@ -290,9 +434,21 @@ public static class ThreeDProbeStrategy
             code.Add($"G38.3 Y-{F(safeRapidY)} F#<RAPID_SEARCH>");
 
         code.Add($"G38.3 Z-{F(zHop)} F200");
-        code.Add($"G38.2 Y{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 Y-{bounce}");
-        code.Add($"G38.2 Y+{F(bounce + 1)} F{slowFeed}");
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y-{F(bounce)} F75");
+        }
+
+        if(!fastProbe)
+        {
+            code.Add($"G38.2 Y{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 Y-{bounce}");
+            code.Add($"G38.2 Y+{F(bounce + 1)} F{slowFeed}");
+        }
+
         code.Add("#<Y1> = #5062");
         code.Add($"G0 Y-{bounce}");
         code.Add($"G0 Z{F(zHop)}");
@@ -303,9 +459,21 @@ public static class ThreeDProbeStrategy
             code.Add($"G38.3 Y{F(safeRapidY)} F#<RAPID_SEARCH>");
 
         code.Add($"G38.3 Z-{F(zHop)} F200");
-        code.Add($"G38.2 Y-{maxSearchLimit} F{searchFeed}");
-        code.Add($"G0 Y{bounce}");
-        code.Add($"G38.2 Y-{F(bounce + 1)} F{slowFeed}");
+
+        if(fastProbe)
+        {
+            code.Add($"G38.2 Y-{F(maxSearchLimit)} F500");
+            code.Add("G4 P0.2");
+            code.Add($"G38.4 Y{F(bounce)} F75");
+        }
+
+        if(!fastProbe)
+        {
+            code.Add($"G38.2 Y-{maxSearchLimit} F{searchFeed}");
+            code.Add($"G0 Y{bounce}");
+            code.Add($"G38.2 Y-{F(bounce + 1)} F{slowFeed}");
+        }
+        
         code.Add("#<Y2> = #5062");
         code.Add($"G0 Y{bounce}");
         code.Add($"G0 Z{F(zHop)}");

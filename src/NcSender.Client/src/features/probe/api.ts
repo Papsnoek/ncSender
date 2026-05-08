@@ -28,6 +28,7 @@ export interface ProbeOptions {
   probeYDimension?: number;
   probeRapidMovement: number;
   probeZFirst?: boolean;
+  fastProbe: boolean;
 }
 
 /**

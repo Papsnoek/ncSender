@@ -182,6 +182,14 @@
                     <span class="slider"></span>
                   </label>
                 </div>
+
+                <div class="probe-control-group">
+                  <label class="probe-label">Enable Fast Probe</label>
+                  <label class="switch">
+                    <input type="checkbox" v-model="fastProbe" :disabled="isProbing" @change="handleFastProbeToggle">
+                    <span class="slider"></span>
+                  </label>
+                </div>
               </div>
             </template>
 
@@ -491,6 +499,7 @@ const xDimension = ref(100);
 const yDimension = ref(100);
 const rapidMovement = ref(2000);
 const probeZFirst = ref(false);
+const fastProbe = ref(false);
 const appStore = useAppStore();
 const jogStep = ref(appStore.unitsPreference.value === 'imperial' ? 0.1 : 1);
 const jogFeedRate = ref(appStore.unitsPreference.value === 'imperial' ? 100 : 3000);
@@ -730,6 +739,17 @@ const handleProbeZFirstToggle = async () => {
   }
 };
 
+
+const handleFastProbeToggle = async () => {
+  if (!isInitialLoad) {
+    try {
+      await updateSettings({ probe: { '3d-probe': { fastProbe: fastProbe.value } } });
+    } catch (error) {
+      console.error('[ProbeDialog] Failed to save fast probe setting', JSON.stringify({ error: error.message }));
+    }
+  }
+};
+
 const handleZThicknessBlur = async () => {
   validateZThickness();
   if (!errors.value.zThickness) {
@@ -899,6 +919,16 @@ watch(() => probeZFirst.value, async (value) => {
   }
 });
 
+watch(() => fastProbe.value, async (value) => {
+  if (!isInitialLoad) {
+    try {
+      await updateSettings({ probe: { '3d-probe': { fastProbe: value } } });
+    } catch (error) {
+      console.error('[ProbeDialog] Failed to save fastProbe setting', JSON.stringify({ error: error.message }));
+    }
+  }
+});
+
 watch(() => selectedBitDiameter.value, async (value) => {
   if (!isInitialLoad) {
     try {
@@ -995,6 +1025,9 @@ watch(() => props.show, async (isShown) => {
         }
         if (typeof settings.probe?.['3d-probe']?.probeZFirst === 'boolean') {
           probeZFirst.value = settings.probe['3d-probe'].probeZFirst;
+        }
+        if (typeof settings.probe?.['3d-probe']?.fastProbe === 'boolean') {
+          fastProbe.value = settings.probe['3d-probe'].fastProbe;
         }
         if (typeof settings.probe?.requireConnectionTest === 'boolean') {
           requireConnectionTest.value = settings.probe.requireConnectionTest;
@@ -1270,6 +1303,7 @@ const handleStartProbe = async () => {
       yDimension: yDimension.value,
       rapidMovement: rapidMovement.value,
       probeZFirst: probeZFirst.value,
+      fastProbe: fastProbe.value,
       toolDiameter: ballPointDiameter.value || 6,
       zPlunge: zPlunge.value,
       zOffset: zOffset.value,
