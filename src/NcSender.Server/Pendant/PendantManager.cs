@@ -665,16 +665,15 @@ public class PendantManager : IPendantManager
 
     private string? GetCncPort()
     {
-        // Live serial connection wins.
+        // Only exclude the port that's currently held by a live serial transport.
+        // Don't fall back to the saved connection.usbPort setting: if the user
+        // previously had USB CNC at /dev/ttyACM0 and now has a pendant there,
+        // the saved setting would lock the pendant out of detection forever.
+        // The scanner's '?' probe already detects active CNC controllers and
+        // blacklists those ports without sending $ID.
         if (_controller.Transport is Connection.SerialTransport serialTransport)
             return serialTransport.PortPath;
-
-        // Otherwise fall back to the user's configured USB port. They may have
-        // switched to ethernet/telnet but left the USB cable plugged in —
-        // treating that port as off-limits stops the scanner from sending
-        // $ID to the CNC firmware, which crashes FluidNC v4.0.3 over wireless
-        // when both transports are connected to the same controller.
-        return _settingsManager.GetSetting<string?>("connection.usbPort", null);
+        return null;
     }
 
     // Internal for testing — called by scanner events and tests
