@@ -1275,8 +1275,8 @@ const initThreeJS = () => {
   );
   // Position camera to match the initial view prop (avoids orientation flash)
   if (props.view === 'top') {
-    camera.position.set(0, 0, 100);
-    camera.up.set(0, 1, 0);
+    camera.position.set(0, -100 * Math.sin(0.05), 100 * Math.cos(0.05));
+    camera.up.set(0, 0, 1);
   } else if (props.view === 'front') {
     camera.position.set(0, -100, 0);
     camera.up.set(0, 0, 1);
@@ -1671,44 +1671,30 @@ const onMouseMove = (event: MouseEvent) => {
   if (!activeCamera) return;
 
   if (isRotating) {
-    // Onshape-style trackball rotation
-    // Rotate around screen axes, not spherical coordinates
     const rotationSpeed = 0.005;
 
-    // Get camera's right vector (in world space)
-    const right = new THREE.Vector3();
-    const up = new THREE.Vector3(0, 0, 1); // Always use world Z-up for vertical rotation
-
-    right.setFromMatrixColumn(activeCamera.matrix, 0); // Camera's right vector
-    right.z = 0; // Project onto XY plane to keep rotation around Z-axis
-
-    // Handle degenerate case when camera is looking straight up/down
-    if (right.lengthSq() < 0.001) {
-      // Use camera's up vector projected to XY as fallback
-      right.setFromMatrixColumn(activeCamera.matrix, 1);
-      right.z = 0;
-      right.applyAxisAngle(up, Math.PI / 2); // Rotate 90° to get right vector
-    }
-    right.normalize();
-
-    // Create rotation around the up axis (Z) for horizontal mouse movement
-    const horizontalRotation = new THREE.Quaternion();
-    horizontalRotation.setFromAxisAngle(up, -deltaX * rotationSpeed);
-
-    // Create rotation around the right axis for vertical mouse movement
-    const verticalRotation = new THREE.Quaternion();
-    verticalRotation.setFromAxisAngle(right, -deltaY * rotationSpeed);
-
-    // Combine rotations
-    const combinedRotation = new THREE.Quaternion();
-    combinedRotation.multiplyQuaternions(horizontalRotation, verticalRotation);
-
-    // Apply rotation to camera position around the target
     const offset = activeCamera.position.clone().sub(activeTarget);
-    offset.applyQuaternion(combinedRotation);
-    activeCamera.position.copy(activeTarget).add(offset);
+    const radius = offset.length();
 
-    activeCamera.up.set(0, 0, 1); // Maintain Z-up orientation
+    if (radius > 1e-6) {
+      let theta = Math.atan2(offset.y, offset.x);
+      let phi = Math.acos(Math.max(-1, Math.min(1, offset.z / radius)));
+
+      theta -= deltaX * rotationSpeed;
+      phi -= deltaY * rotationSpeed;
+
+      const polarEpsilon = 0.05;
+      phi = Math.max(polarEpsilon, Math.min(Math.PI - polarEpsilon, phi));
+
+      offset.set(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.sin(phi) * Math.sin(theta),
+        radius * Math.cos(phi),
+      );
+    }
+
+    activeCamera.position.copy(activeTarget).add(offset);
+    activeCamera.up.set(0, 0, 1);
     activeCamera.lookAt(activeTarget);
   } else if (isPanning) {
     // Pan camera by moving both position and target
@@ -2555,6 +2541,8 @@ const handleGCodeUpdate = async (data: { filename: string; content?: string; tim
       gcodeVisualizer.setWCO(props.workOffset);
     }
 
+    gcodeVisualizer.setSafeZHeight(safeZHeightMm.value);
+
     loadingProgress.value = 70;
     gcodeVisualizer.render(content);
     loadingProgress.value = 90;
@@ -2943,8 +2931,12 @@ const fitCameraToBounds = (bounds: any, viewType?: 'top' | 'front' | 'iso' | 'sp
 
   switch (currentView) {
     case 'top':
-      camera.position.set(bounds.center.x, bounds.center.y, bounds.center.z + distance);
-      camera.up.set(0, 1, 0);
+      camera.position.set(
+        bounds.center.x,
+        bounds.center.y - distance * Math.sin(0.05),
+        bounds.center.z + distance * Math.cos(0.05),
+      );
+      camera.up.set(0, 0, 1);
       break;
     case 'front':
       camera.position.set(bounds.center.x, bounds.center.y - distance, bounds.center.z);
@@ -3153,8 +3145,12 @@ const setCameraView = (viewType: 'top' | 'front' | 'iso' | 'split') => {
     case 'top':
       // Top view - looking down along Z axis with proper CNC orientation
       // Y points up on screen, X points right on screen
-      camera.position.set(center.x, center.y, center.z + distance);
-      camera.up.set(0, 1, 0); // Y axis points up in top view
+      camera.position.set(
+        center.x,
+        center.y - distance * Math.sin(0.05),
+        center.z + distance * Math.cos(0.05),
+      );
+      camera.up.set(0, 0, 1);
       break;
     case 'front':
       // Front view - looking along Y axis with Z up

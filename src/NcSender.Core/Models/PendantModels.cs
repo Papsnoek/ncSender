@@ -21,6 +21,14 @@ public class PendantStatus
 
     /// <summary>True when a direct USB connection is available for OTA firmware flashing.</summary>
     public bool OtaReady { get; set; }
+
+    /// <summary>
+    /// True when an ESP-NOW dongle is plugged in via USB, regardless of whether
+    /// a pendant is currently paired/connected through it. Drives the "Unpair
+    /// Dongle" button visibility so the user can recover from a stuck state
+    /// (e.g. pendant unpaired but dongle still has saved pairing).
+    /// </summary>
+    public bool DongleConnected { get; set; }
 }
 
 public class PendantDeviceInfo

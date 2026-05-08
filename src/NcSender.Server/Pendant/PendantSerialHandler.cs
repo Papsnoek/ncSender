@@ -48,10 +48,18 @@ public class PendantSerialHandler : IAsyncDisposable
         if (_port?.IsOpen == true)
             await DisconnectAsync();
 
+        // Open with both modem-control lines high so there's no transition
+        // edge at port-open. CP2102/CH340 USB-UART bridges on ESP-based boards
+        // (FluidNC controllers, the pendant, the dongle) wire DTR→EN and
+        // RTS→GPIO0 through the standard auto-reset diode network — opening
+        // with `DTR=1, RTS=0` pulls EN low and hard-resets the chip. Matching
+        // SerialTransport's settings (both high) keeps any ESP32 we happen to
+        // probe running normally, so the scanner can't accidentally reboot
+        // a FluidNC controller that shares the USB cable for power.
         _port = new SerialPort(port, 460800)
         {
             DtrEnable = true,
-            RtsEnable = false,
+            RtsEnable = true,
             ReadTimeout = SerialPort.InfiniteTimeout,
             WriteTimeout = 5000
         };
@@ -70,7 +78,7 @@ public class PendantSerialHandler : IAsyncDisposable
             _readTask = ReadLoopAsync(_readCts.Token);
         }
 
-        _logger.LogInformation("Pendant serial connected on {Port}", port);
+        _logger.LogInformation("Serial port opened: {Port}", port);
     }
 
     public async Task DisconnectAsync()

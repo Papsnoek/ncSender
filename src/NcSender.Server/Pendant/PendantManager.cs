@@ -128,7 +128,8 @@ public class PendantManager : IPendantManager
             PendantEnabled = usbConnected,
             ActiveConnectionType = activeType,
             PendantConnectionType = pendantConnectionType,
-            OtaReady = otaReady
+            OtaReady = otaReady,
+            DongleConnected = _dongleHandler is { IsConnected: true }
         };
     }
 
@@ -664,7 +665,12 @@ public class PendantManager : IPendantManager
 
     private string? GetCncPort()
     {
-        // Only exclude the port if CNC is actually connected via serial
+        // Only exclude the port that's currently held by a live serial transport.
+        // Don't fall back to the saved connection.usbPort setting: if the user
+        // previously had USB CNC at /dev/ttyACM0 and now has a pendant there,
+        // the saved setting would lock the pendant out of detection forever.
+        // The scanner's '?' probe already detects active CNC controllers and
+        // blacklists those ports without sending $ID.
         if (_controller.Transport is Connection.SerialTransport serialTransport)
             return serialTransport.PortPath;
         return null;

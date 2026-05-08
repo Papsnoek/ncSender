@@ -56,8 +56,8 @@
         </div>
       </div>
 
-      <!-- Dongle Unpair -->
-      <div v-if="isConnected && isDongle" class="dongle-card">
+      <!-- Dongle Unpair: visible whenever a dongle is on USB, even if pendant is not paired/connected -->
+      <div v-if="dongleConnected" class="dongle-card">
         <div class="dongle-card__row">
           <div class="dongle-card__info">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -65,7 +65,7 @@
               <path d="M2 17l10 5 10-5"/>
               <path d="M2 12l10 5 10-5"/>
             </svg>
-            <span>Connected via ESP-NOW dongle</span>
+            <span>{{ isConnected && isDongle ? 'Connected via ESP-NOW dongle' : 'ESP-NOW dongle plugged in' }}</span>
           </div>
           <button class="dongle-unpair-btn" @click="showUnpairConfirm = true" :disabled="unpairingDongle">
             {{ unpairingDongle ? 'Unpairing...' : 'Unpair Dongle' }}
@@ -316,6 +316,7 @@ const fwSelectedFile = ref<File | null>(null);
 
 const otaReady = ref(false);
 const activeConnectionType = ref('none');
+const dongleConnected = ref(false);
 const isDongle = computed(() => activeConnectionType.value === 'espnow');
 const isConnected = computed(() => !!usbPendant.value);
 const activePendant = computed(() => usbPendant.value);
@@ -340,6 +341,7 @@ const fetchStatus = async (showLoading = true) => {
     usbPendant.value = data.usbPendant;
     otaReady.value = data.otaReady ?? false;
     activeConnectionType.value = data.activeConnectionType ?? 'none';
+    dongleConnected.value = data.dongleConnected ?? false;
   } catch (error) {
     console.error('Failed to fetch pendant status:', error);
   } finally {

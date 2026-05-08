@@ -221,7 +221,10 @@ public partial class CncController : ICncController
                     _logger.LogInformation("Soft-reset sent, waiting for greeting...");
             });
 
-        // Start verification timeout — disconnect if no greeting received
+        // Start verification timeout — disconnect if no greeting received.
+        // 15s covers FluidNC's slow boot (config dump + WiFi STA connect +
+        // mDNS) which routinely exceeds 5s before the canonical Grbl
+        // greeting line is emitted. grblHAL is sub-second so this is safe.
         _verificationCts?.Cancel();
         _verificationCts = new CancellationTokenSource();
         var cts = _verificationCts;
@@ -229,10 +232,10 @@ public partial class CncController : ICncController
         {
             try
             {
-                await Task.Delay(5000, cts.Token);
+                await Task.Delay(15000, cts.Token);
                 if (_isVerifying && !_hasReceivedGreeting)
                 {
-                    _logger.LogWarning("No CNC greeting received within 5s, disconnecting (wrong device?)");
+                    _logger.LogWarning("No CNC greeting received within 15s, disconnecting (wrong device?)");
                     OnConnectionLost(new TimeoutException("No CNC greeting received"));
                 }
             }
@@ -356,11 +359,34 @@ public partial class CncController : ICncController
 
                     LogCommandSent(entry.RawCommand, isRealTime: false);
 
-                    // Wait for the TCS to be completed by HandleCommandOk/HandleCommandError.
-                    // No timeout — commands like M0 (program pause) hold until the user
-                    // sends ~ (cycle start), which is a real-time command that bypasses
-                    // the queue. Disconnection cancels via ct.
-                    await entry.Tcs.Task.WaitAsync(ct);
+                    // Per-command timeout (see CommandTimeoutPolicy) only applies to
+                    // direct user-driven sources where a stuck queue feels like a
+                    // frozen UI: terminal/panel input (client), jog buttons,
+                    // pendant. Everything else (job/macro streaming, internal
+                    // system/event/probe/controller-files calls) waits as long as
+                    // the controller takes — the planner buffer paces things
+                    // naturally and a slow motion can legitimately delay "ok".
+                    var sourceId = entry.Meta?.SourceId;
+                    var isManual = sourceId is "client" or "jog" or "usb-pendant";
+                    var timeout = isManual ? CommandTimeoutPolicy.GetTimeout(entry.RawCommand) : null;
+                    try
+                    {
+                        if (timeout is { } t)
+                            await entry.Tcs.Task.WaitAsync(t, ct);
+                        else
+                            await entry.Tcs.Task.WaitAsync(ct);
+                    }
+                    catch (TimeoutException)
+                    {
+                        var msg = $"No 'ok' from controller within {timeout!.Value.TotalSeconds:0.##}s for: {entry.RawCommand}";
+                        _logger.LogWarning(msg);
+                        var err = new TimeoutException(msg);
+                        entry.Tcs.TrySetException(err);
+                        EmitCommandAck(entry, "error", msg);
+                        // Continue draining the queue — don't soft-reset. If the
+                        // controller is genuinely hung, subsequent commands will
+                        // also time out and the user can hit Stop manually.
+                    }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -821,6 +847,23 @@ public partial class CncController : ICncController
             var sourceId = GetActiveSourceId();
             DataReceived?.Invoke(trimmedData, sourceId);
         }
+        // G92 offset (current G92 modal offset) — needed for FluidNC WCO synthesis
+        else if (trimmedData.StartsWith("[G92:", StringComparison.Ordinal) && trimmedData[^1] == ']')
+        {
+            _lastStatus.G92Offset = trimmedData[5..^1];
+            LogControllerData(trimmedData);
+            var sourceId = GetActiveSourceId();
+            DataReceived?.Invoke(trimmedData, sourceId);
+        }
+        // Tool Length Offset (Z-only) — needed for FluidNC WCO synthesis
+        else if (trimmedData.StartsWith("[TLO:", StringComparison.Ordinal) && trimmedData[^1] == ']')
+        {
+            if (double.TryParse(trimmedData[5..^1], NumberStyles.Float, CultureInfo.InvariantCulture, out var tlo))
+                _lastStatus.Tlo = tlo;
+            LogControllerData(trimmedData);
+            var sourceId = GetActiveSourceId();
+            DataReceived?.Invoke(trimmedData, sourceId);
+        }
         // Error response
         else if (trimmedData.StartsWith("error:", StringComparison.OrdinalIgnoreCase))
         {
@@ -1171,6 +1214,11 @@ public partial class CncController : ICncController
             _lastStatus.Pn = _activeProtocol.NormalizePinState(_lastStatus.Pn, _lastStatus.ActiveProbe, tlsIdx, _lastStatus.ProbeCount);
         }
 
+        // Protocol-specific post-processing (e.g. homing detection, WCO synthesis
+        // for FluidNC). Must run before wPos computation so the synthesized WCO
+        // is available — FluidNC status reports omit WCO entirely.
+        _activeProtocol?.PostProcessStatus(_lastStatus, prevStatus ?? "");
+
         // Compute wPos from MPos - WCO (GRBL typically only sends MPos + WCO)
         // V1 client computes work coords client-side, but we store WPos for internal use
         if (!string.IsNullOrEmpty(_lastStatus.MPos) && !string.IsNullOrEmpty(_lastStatus.WCO))
@@ -1188,9 +1236,6 @@ public partial class CncController : ICncController
             }
             _lastStatus.WPos = string.Join(",", wParts);
         }
-
-        // Protocol-specific post-processing (e.g. homing detection)
-        _activeProtocol?.PostProcessStatus(_lastStatus, prevStatus ?? "");
 
         // Preserve accessory states if A: field not present
         if (!hasAccessoryField)
