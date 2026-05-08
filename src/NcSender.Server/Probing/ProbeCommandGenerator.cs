@@ -61,32 +61,40 @@ public static class ProbeCommandGenerator
         return axis switch
         {
             "Z" => ThreeDProbeStrategy.GetZProbeRoutine(
-                GetDouble(opts, "zOffset", 0)),
+                GetDouble(opts, "zOffset", 0),
+                GetBool(opts, "fastProbe", false)),
 
             "X" => RequireXSide(opts, errors, side =>
                 ThreeDProbeStrategy.GetXProbeRoutine(side,
-                    GetDouble(opts, "toolDiameter", 6))),
+                    GetDouble(opts, "toolDiameter", 6),
+                    GetBool(opts, "fastProbe", false))),
 
             "Y" => RequireYSide(opts, errors, side =>
                 ThreeDProbeStrategy.GetYProbeRoutine(side,
-                    GetDouble(opts, "toolDiameter", 6))),
+                    GetDouble(opts, "toolDiameter", 6),
+                    GetBool(opts, "fastProbe", false))),
 
             "XY" => RequireCorner(opts, errors, corner =>
                 ThreeDProbeStrategy.GetXYProbeRoutine(corner,
-                    GetDouble(opts, "toolDiameter", 6))),
+                    GetDouble(opts, "toolDiameter", 6),
+                    skipPrepMove: false,
+                    GetDouble(opts, "zPlunge", 3),
+                    GetBool(opts, "fastProbe", false))),
 
             "XYZ" => RequireCorner(opts, errors, corner =>
                 ThreeDProbeStrategy.GetXYZProbeRoutine(corner,
                     GetDouble(opts, "toolDiameter", 6),
                     GetDouble(opts, "zPlunge", 3),
-                    GetDouble(opts, "zOffset", 0))),
+                    GetDouble(opts, "zOffset", 0),
+                    GetBool(opts, "fastProbe", false))),
 
             "Center - Inner" => ThreeDProbeStrategy.GetCenterInnerRoutine(
                 GetDouble(opts, "xDimension", 0),
                 GetDouble(opts, "yDimension", 0),
                 GetDouble(opts, "toolDiameter", 2),
                 GetDouble(opts, "rapidMovement", 2000),
-                GetDouble(opts, "zPlunge", 3)),
+                GetDouble(opts, "zPlunge", 3),
+                GetBool(opts, "fastProbe", false)),
 
             "Center - Outer" => ThreeDProbeStrategy.GetCenterOuterRoutine(
                 GetDouble(opts, "xDimension", 0),
@@ -95,7 +103,8 @@ public static class ProbeCommandGenerator
                 GetDouble(opts, "rapidMovement", 2000),
                 GetBool(opts, "probeZFirst", false),
                 GetDouble(opts, "zPlunge", 3),
-                GetDouble(opts, "zOffset", 0)),
+                GetDouble(opts, "zOffset", 0),
+                GetBool(opts, "fastProbe", false)),
 
             _ => AddError(errors, "Invalid probing axis for 3D probe")
         };
